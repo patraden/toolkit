@@ -30,10 +30,10 @@ var pow10tab = [...]int64{
 	1000000000000,
 }
 
-func pow10(n uint8) int64 {
+func pow10(n uint8) (int64, error) {
 	if int(n) >= len(pow10tab) {
-		return -1
+		return 0, ErrMaxScale
 	}
 
-	return pow10tab[n]
+	return pow10tab[n], nil
 }

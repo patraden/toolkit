@@ -156,3 +156,22 @@ func TestDivIntOverflowMinInt64ByMinusOne(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, decimal64.ErrOverflow, err)
 }
+
+func TestPow10ErrorHandling(t *testing.T) {
+	t.Parallel()
+
+	// Test FromInt with scale > MaxScale
+	_, err := decimal64.FromInt(123, decimal64.MaxScale+1)
+	require.Error(t, err)
+	assert.Equal(t, decimal64.ErrMaxScale, err)
+
+	// Test FromInt with scale > pow10 table size (13+)
+	_, err = decimal64.FromInt(123, 13)
+	require.Error(t, err)
+	assert.Equal(t, decimal64.ErrMaxScale, err)
+
+	// Test that the error is properly propagated from pow10
+	_, err = decimal64.FromInt(123, 20)
+	require.Error(t, err)
+	assert.Equal(t, decimal64.ErrMaxScale, err)
+}

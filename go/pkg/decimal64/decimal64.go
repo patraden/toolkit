@@ -46,7 +46,11 @@ func FromInt(valueInt int64, scale uint8) (Decimal64, error) {
 		return Decimal64{}, ErrMaxScale
 	}
 
-	factor := pow10(scale)
+	factor, err := pow10(scale)
+	if err != nil {
+		return Decimal64{}, err
+	}
+
 	if willMulOverflow(valueInt, factor) {
 		return Decimal64{}, ErrOverflow
 	}
@@ -60,7 +64,10 @@ func (d Decimal64) String() string {
 		return strconv.FormatInt(d.value, 10)
 	}
 
-	base := pow10(d.scale)
+	base, err := pow10(d.scale)
+	if err != nil {
+		return fmt.Sprintf("<invalid scale %d>", d.scale)
+	}
 
 	quotient := d.value / base
 	remainder := d.value % base

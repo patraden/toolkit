@@ -3,6 +3,7 @@ module github.com/patraden/toolkit
 go 1.24.1
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/stretchr/testify v1.3.0
 	github.com/vertica/vertica-sql-go v1.3.4
 )

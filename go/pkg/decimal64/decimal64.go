@@ -126,11 +126,27 @@ func willMulOverflow(multiplicand, multiplier int64) bool {
 		return false
 	}
 
-	if multiplicand == math.MinInt64 || multiplier == math.MinInt64 {
+	// Special case: MinInt64 * -1 (or vice-versa) overflows because
+	// abs(MinInt64) cannot be represented in int64.
+	if (multiplicand == math.MinInt64 && multiplier == -1) ||
+		(multiplier == math.MinInt64 && multiplicand == -1) {
 		return true
 	}
 
-	product := multiplicand * multiplier
+	if multiplicand > 0 {
+		if multiplier > 0 {
+			return multiplicand > math.MaxInt64/multiplier
+		}
+		// multiplier < 0
+		return multiplier < math.MinInt64/multiplicand
+	}
 
-	return multiplicand != 0 && product/multiplicand != multiplier
+	// multiplicand < 0
+	if multiplier > 0 {
+		return multiplicand < math.MinInt64/multiplier
+	}
+
+	// both negative
+	// Note: division truncates toward zero in Go; the inequality is correct.
+	return multiplicand != 0 && multiplier < math.MaxInt64/multiplicand
 }

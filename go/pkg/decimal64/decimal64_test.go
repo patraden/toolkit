@@ -145,3 +145,14 @@ func TestMulIntDivInt(t *testing.T) {
 	_, err = dec.DivInt(0)
 	require.Error(t, err)
 }
+
+func TestDivIntOverflowMinInt64ByMinusOne(t *testing.T) {
+	t.Parallel()
+
+	dec, err := decimal64.New(0, math.MinInt64)
+	require.NoError(t, err)
+
+	_, err = dec.DivInt(-1)
+	require.Error(t, err)
+	assert.Equal(t, decimal64.ErrOverflow, err)
+}

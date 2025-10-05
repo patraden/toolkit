@@ -16,6 +16,7 @@ package decimal64
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 )
@@ -121,6 +122,11 @@ func (d Decimal64) MulInt(k int64) Decimal64 {
 func (d Decimal64) DivInt(divisor int64) (Decimal64, error) {
 	if divisor == 0 {
 		return Decimal64{}, ErrDivisionByZero
+	}
+
+	// Guard against runtime overflow: MinInt64 / -1 panics in Go.
+	if divisor == -1 && d.value == math.MinInt64 {
+		return Decimal64{}, ErrOverflow
 	}
 
 	return Decimal64{

@@ -5,8 +5,8 @@ on:
   pull_request:
 
 jobs:
-  test:
-    name: Run tests and collect coverage
+  go:
+    name: Go Test & Coverage
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -17,19 +17,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24.1'  # Replace with your Go version
+          go-version: '1.24.1'
 
       - name: Install dependencies
+        working-directory: go
         run: go mod download
 
-      - name: Run tests
-        run: go test -v -coverprofile=coverage.txt ./...
-      
-      - name: Validate codecov config
-        run: curl --data-binary @codecov.yml https://codecov.io/validate
+      - name: Run Go tests with coverage
+        working-directory: go
+        run: go test -v -coverprofile=coverage.out ./...
 
-      - name: Upload results to Codecov
+      - name: Upload Go coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
+          files: go/coverage.out
+          flags: go
+          name: codecov-go
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}

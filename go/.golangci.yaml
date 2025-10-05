@@ -1,0 +1,39 @@
+# See https://golangci-lint.run/usage/linters/
+
+linters:
+  enable-all: true
+  disable:
+    - gochecknoglobals
+    - ireturn
+    - nlreturn
+    - tenv
+    - recvcheck
+    - tparallel
+    - usetesting
+
+linters-settings:
+  depguard:
+    rules:
+      main:
+        list-mode: lax
+        allow:
+          - $gostd
+
+  tagliatelle:
+      case:
+        rules:
+          json: snake
+
+  wrapcheck:
+    ignorePackageGlobs:
+      - github.com/patraden/toolkit/pkg/**
+      - database/sql
+
+  varnamelen:
+    ignore-names:
+      - db
+      - tt
+      - lc
+    ignore-decls:
+      - sb strings.Builder
+      - t testing.T

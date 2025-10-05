@@ -81,20 +81,26 @@ func (d Decimal64) String() string {
 func (d Decimal64) Scale() uint8       { return d.scale }
 func (d Decimal64) ScaledValue() int64 { return d.value }
 
-func (d Decimal64) Add(o Decimal64) (Decimal64, error) {
-	if d.scale != o.scale {
-		return Decimal64{}, fmt.Errorf("%w: %d vs %d", ErrScaleMismatch, d.scale, o.scale)
+func (d Decimal64) Add(other Decimal64) (Decimal64, error) {
+	if d.scale != other.scale {
+		return Decimal64{}, fmt.Errorf("%w: %d vs %d", ErrScaleMismatch, d.scale, other.scale)
 	}
 
-	return Decimal64{scale: d.scale, value: d.value + o.value}, nil
+	return Decimal64{
+		scale: d.scale,
+		value: d.value + other.value,
+	}, nil
 }
 
-func (d Decimal64) Sub(o Decimal64) (Decimal64, error) {
-	if d.scale != o.scale {
-		return Decimal64{}, fmt.Errorf("%w: %d vs %d", ErrScaleMismatch, d.scale, o.scale)
+func (d Decimal64) Sub(other Decimal64) (Decimal64, error) {
+	if d.scale != other.scale {
+		return Decimal64{}, fmt.Errorf("%w: %d vs %d", ErrScaleMismatch, d.scale, other.scale)
 	}
 
-	return Decimal64{scale: d.scale, value: d.value - o.value}, nil
+	return Decimal64{
+		scale: d.scale,
+		value: d.value - other.value,
+	}, nil
 }
 
 func (d Decimal64) MulInt(k int64) Decimal64 {

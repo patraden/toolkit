@@ -16,7 +16,7 @@ package decimal64
 
 import (
 	"fmt"
-	"math"
+	"math/big"
 	"strconv"
 )
 
@@ -28,11 +28,15 @@ type Decimal64 struct {
 }
 
 // New constructs from raw scaled value.
-func New(scale uint8, scaledValue int64) Decimal64 {
+func New(scale uint8, scaledValue int64) (Decimal64, error) {
+	if scale > MaxScale {
+		return Decimal64{}, ErrMaxScale
+	}
+
 	return Decimal64{
 		scale: scale,
 		value: scaledValue,
-	}
+	}, nil
 }
 
 // FromInt constructs Decimal64 from integer.
@@ -46,7 +50,7 @@ func FromInt(valueInt int64, scale uint8) (Decimal64, error) {
 		return Decimal64{}, ErrOverflow
 	}
 
-	return Decimal64{scale: scale, value: valueInt * factor}, nil
+	return New(scale, valueInt*factor)
 }
 
 // String prints the decimal value.
@@ -86,6 +90,10 @@ func (d Decimal64) Add(other Decimal64) (Decimal64, error) {
 		return Decimal64{}, fmt.Errorf("%w: %d vs %d", ErrScaleMismatch, d.scale, other.scale)
 	}
 
+	if willAddOverflow(d.value, other.value) {
+		return Decimal64{}, ErrOverflow
+	}
+
 	return Decimal64{
 		scale: d.scale,
 		value: d.value + other.value,
@@ -122,31 +130,19 @@ func (d Decimal64) DivInt(divisor int64) (Decimal64, error) {
 }
 
 func willMulOverflow(multiplicand, multiplier int64) bool {
-	if multiplicand == 0 || multiplier == 0 {
-		return false
-	}
+	// Use big.Int to safely detect overflow without complex branching.
+	a := new(big.Int).SetInt64(multiplicand)
+	b := new(big.Int).SetInt64(multiplier)
+	prod := new(big.Int).Mul(a, b)
 
-	// Special case: MinInt64 * -1 (or vice-versa) overflows because
-	// abs(MinInt64) cannot be represented in int64.
-	if (multiplicand == math.MinInt64 && multiplier == -1) ||
-		(multiplier == math.MinInt64 && multiplicand == -1) {
-		return true
-	}
+	return !prod.IsInt64()
+}
 
-	if multiplicand > 0 {
-		if multiplier > 0 {
-			return multiplicand > math.MaxInt64/multiplier
-		}
-		// multiplier < 0
-		return multiplier < math.MinInt64/multiplicand
-	}
+func willAddOverflow(augend, addend int64) bool {
+	// Use big.Int to detect overflow on addition consistently with multiplication.
+	a := new(big.Int).SetInt64(augend)
+	b := new(big.Int).SetInt64(addend)
+	sum := new(big.Int).Add(a, b)
 
-	// multiplicand < 0
-	if multiplier > 0 {
-		return multiplicand < math.MinInt64/multiplier
-	}
-
-	// both negative
-	// Note: division truncates toward zero in Go; the inequality is correct.
-	return multiplicand != 0 && multiplier < math.MaxInt64/multiplicand
+	return !sum.IsInt64()
 }

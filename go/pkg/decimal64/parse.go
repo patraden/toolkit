@@ -82,5 +82,5 @@ func NewFromString(inputStr string, scale uint8) (Decimal64, error) {
 		return Decimal64{}, ErrInvalidDecimal
 	}
 
-	return New(scale, scaled), nil
+	return New(scale, scaled)
 }

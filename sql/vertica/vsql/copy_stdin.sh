@@ -6,7 +6,7 @@
 #   VERTICA_USER     - username (default dbadmin)
 #   VERTICA_PASSWORD - password (can be empty)
 #   VERTICA_DB       - database name (default bi)
-#   VERTICA_DELIM    - field delimiter (default ",")
+#   VERTICA_DELIM    - field delimiter (default "#")
 #   VERTICA_NULL     - string representing NULL (default "")
 #   VERTICA_ENC      - enclosing character (default '"')
 

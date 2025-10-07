@@ -16,7 +16,7 @@ VERTICA_PASSWORD="password2" \
 VERTICA_HOST="hostname1" \
 VERTICA_PASSWORD="password1" \
 ./copy_stdout.sh copy_stdout_query.sql | \
-VERTICA_HOST="qa-nds.rtty.in" \
+VERTICA_HOST="hostname2" \
 VERTICA_PASSWORD= \
 ./copy_stdin.sh "schema.table"
 ```

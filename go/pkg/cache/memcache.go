@@ -114,8 +114,6 @@ func (mc *MemCache) invalidated(key string) bool {
 
 	if val, ok := mc.items[key]; ok && val.IsExpired() {
 		delete(mc.items, key)
-		mc.metrics.AddLazyEviction()
-
 		return true
 	}
 
@@ -155,6 +153,8 @@ func (mc *MemCache) Get(_ context.Context, key string) (any, error) {
 	if val.IsExpired() {
 		if mc.invalidated(key) {
 			mc.metrics.AddMiss()
+			mc.metrics.AddLazyEviction()
+
 			return nil, ErrNotFound
 		}
 

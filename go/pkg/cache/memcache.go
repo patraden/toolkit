@@ -31,13 +31,17 @@ const (
 	DefaultCleanupInterval = time.Minute
 )
 
-// MemCache is a simple in-memory cache with optional TTL expiration.
+// MemCache is a thread-safe in-memory cache with optional TTL expiration.
 //
 // It performs eviction:
 //   - lazily on Get (expired items are removed on access)
 //   - periodically via a background cleaner (best-effort, capped per run)
 //
-// Close must be called to stop the background cleaner.
+// MemCache uses read-write locks to allow concurrent reads while ensuring
+// thread safety. Write operations (Set, Delete) block readers, but reads
+// (Get) use read locks for better concurrency.
+//
+// Close must be called to stop the background cleaner and release resources.
 type MemCache struct {
 	items     map[string]entry
 	stopCh    chan struct{}
@@ -48,14 +52,28 @@ type MemCache struct {
 	closed    atomic.Bool
 }
 
-// New returns a MemCache using DefaultCleanupInterval.
+// New returns a MemCache using DefaultCleanupInterval for background cleanup.
+// The returned cache starts a background goroutine that periodically removes
+// expired entries. Call Close to stop the background cleaner.
 func New(log zerolog.Logger) *MemCache {
 	return WithDeleteInterval(DefaultCleanupInterval, log)
 }
 
 // WithDeleteInterval returns a MemCache that runs the background cleaner at the
 // provided interval.
+//
+// The background cleaner removes expired entries in batches, processing at most
+// MaxDeletesPerRun items per interval to bound cleanup work.
+//
+// If cleanupInterval is <= 0, DefaultCleanupInterval is used instead to avoid
+// ticker panics.
+//
+// The returned cache starts a background goroutine. Call Close to stop it.
 func WithDeleteInterval(cleanupInterval time.Duration, log zerolog.Logger) *MemCache {
+	if cleanupInterval <= 0 {
+		cleanupInterval = DefaultCleanupInterval
+	}
+
 	cache := &MemCache{
 		items:     make(map[string]entry),
 		stopCh:    make(chan struct{}),
@@ -77,49 +95,73 @@ func WithDeleteInterval(cleanupInterval time.Duration, log zerolog.Logger) *MemC
 // TTL semantics:
 //   - ttl > 0: expires at now+ttl
 //   - ttl <= 0: does not expire
-func (mc *MemCache) Set(ctx context.Context, key string, value any, ttl time.Duration) error {
-	select {
-	case <-ctx.Done():
-		mc.log.Error().
-			Str("key", key).
-			Err(ctx.Err()).
-			Msg("set key aborted")
+//
+// Set is safe for concurrent use. If the key already exists, it is overwritten.
+func (mc *MemCache) Set(_ context.Context, key string, value any, ttl time.Duration) error {
+	mc.mx.Lock()
+	mc.items[key] = newEntry(value, ttl)
+	mc.mx.Unlock()
 
-		return ErrAborted
-	default:
-		mc.mx.Lock()
-		mc.items[key] = newEntry(value, ttl)
-		mc.mx.Unlock()
-		mc.metrics.AddSet()
-	}
+	mc.metrics.AddSet()
 
 	return nil
 }
 
-// Get returns the cached value for key.
-//
-// If the entry is missing or expired, it returns ErrNotFound. Expired entries are
-// removed lazily on access.
-func (mc *MemCache) Get(_ context.Context, key string) (any, error) {
-	mc.mx.RLock()
-	val, ok := mc.items[key]
-	mc.mx.RUnlock()
+// Checks if key can be invalidated.
+func (mc *MemCache) invalidated(key string) bool {
+	mc.mx.Lock()
+	defer mc.mx.Unlock()
 
+	if val, ok := mc.items[key]; ok && val.IsExpired() {
+		delete(mc.items, key)
+		mc.metrics.AddLazyEviction()
+
+		return true
+	}
+
+	return false
+}
+
+// Fast get with concurrent read.
+func (mc *MemCache) get(key string) (entry, error) {
+	mc.mx.RLock()
+	defer mc.mx.RUnlock()
+
+	val, ok := mc.items[key]
 	if !ok {
 		mc.metrics.AddMiss()
-		return nil, ErrNotFound
+		return entry{}, ErrNotFound
+	}
+
+	return val, nil
+}
+
+// Get returns the cached value for key.
+//
+// If the entry is missing or expired, Get returns ErrNotFound.
+// Expired entries are removed lazily on access (when Get is called).
+//
+// Get is safe for concurrent use. It uses read locks for fast access and
+// only acquires a write lock when deleting expired entries. If a key is
+// refreshed between the read and write lock acquisition, Get will return
+// the fresh value.
+func (mc *MemCache) Get(_ context.Context, key string) (any, error) {
+	val, err := mc.get(key)
+	if err != nil {
+		return nil, err
 	}
 
 	// lazy invalidation
 	if val.IsExpired() {
-		mc.mx.Lock()
-		delete(mc.items, key)
-		mc.mx.Unlock()
+		if mc.invalidated(key) {
+			mc.metrics.AddMiss()
+			return nil, ErrNotFound
+		}
 
-		mc.metrics.AddLazyEviction()
-		mc.metrics.AddMiss()
-
-		return nil, ErrNotFound
+		val, err = mc.get(key)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	mc.metrics.AddHit()
@@ -127,13 +169,18 @@ func (mc *MemCache) Get(_ context.Context, key string) (any, error) {
 	return val.value, nil
 }
 
-// deleteKeys removes keys from cache and returns the count of deleted items.
-// Caller must handle metrics tracking separately.
-func (mc *MemCache) deleteKeys(ctx context.Context, keys []string) (uint32, error) {
+// Delete removes a set of keys from cache.
+//
+// Delete is safe for concurrent use. If a key does not exist, it is ignored.
+// The operation can be cancelled via the context.
+// If cancelled, Delete returns ErrAborted.
+// Metrics are still updated for keys deleted before cancellation.
+func (mc *MemCache) Delete(ctx context.Context, keys ...string) error {
 	mc.mx.Lock()
 	defer mc.mx.Unlock()
 
 	deleted := uint32(0)
+	defer func() { mc.metrics.AddDelete(deleted) }()
 
 	for _, key := range keys {
 		select {
@@ -143,7 +190,7 @@ func (mc *MemCache) deleteKeys(ctx context.Context, keys []string) (uint32, erro
 				Str("key", key).
 				Msg("delete key aborted")
 
-			return deleted, ErrAborted
+			return ErrAborted
 		default:
 			if _, exists := mc.items[key]; exists {
 				delete(mc.items, key)
@@ -152,18 +199,6 @@ func (mc *MemCache) deleteKeys(ctx context.Context, keys []string) (uint32, erro
 			}
 		}
 	}
-
-	return deleted, nil
-}
-
-// Delete removes a set of keys from cache.
-func (mc *MemCache) Delete(ctx context.Context, keys ...string) error {
-	deleted, err := mc.deleteKeys(ctx, keys)
-	if err != nil {
-		return err
-	}
-
-	mc.metrics.AddDelete(deleted)
 
 	return nil
 }
@@ -178,7 +213,6 @@ func (mc *MemCache) cleaner(interval time.Duration) {
 		select {
 		case <-ticker.C:
 			start := time.Now()
-			ctx, cancel := context.WithTimeout(context.Background(), interval)
 
 			mc.mx.RLock()
 
@@ -195,29 +229,18 @@ func (mc *MemCache) cleaner(interval time.Duration) {
 
 			mc.mx.RUnlock()
 
-			var (
-				totalCleaned uint32
-				delErr       error
-			)
+			deleted := uint32(0)
 
-			if len(keysToClean) > 0 {
-				totalCleaned, delErr = mc.deleteKeys(ctx, keysToClean)
+			for _, key := range keysToClean {
+				if mc.invalidated(key) {
+					deleted++
+				}
 			}
 
 			duration := time.Since(start)
 
-			mc.metrics.AddScheduledEviction(totalCleaned)
-			mc.metrics.AddCleanupRun(duration, totalCleaned, delErr != nil)
-
-			if delErr != nil {
-				mc.log.Error().Err(delErr).
-					Dur("duration", duration).
-					Dur("interval", interval).
-					Uint32("items_cleaned", totalCleaned).
-					Msg("cleanup was aborted")
-			}
-
-			cancel()
+			mc.metrics.AddScheduledEviction(deleted)
+			mc.metrics.AddCleanupRun(duration, deleted)
 		case <-mc.stopCh:
 			mc.log.Info().Msg("gracefully stopped cache cleaner")
 			mc.cleanerWG.Done()
@@ -228,16 +251,27 @@ func (mc *MemCache) cleaner(interval time.Duration) {
 }
 
 // Metrics returns a snapshot of internal metrics.
+//
+// The returned snapshot is a point-in-time copy of all metrics, safe for
+// concurrent access. Metrics include hits, misses, sets, deletes, and
+// eviction statistics.
 func (mc *MemCache) Metrics() Metrics {
 	return mc.metrics.Snapshot()
 }
 
-// MetricsJSON returns a JSON snapshot of internal metrics.
+// MetricsJSON returns a JSON snapshot of internal metrics as a string.
+//
+// The returned JSON is a point-in-time snapshot, safe for concurrent access.
+// Useful for logging or monitoring endpoints.
 func (mc *MemCache) MetricsJSON() string {
 	return mc.metrics.JSONStr()
 }
 
 // Size returns the current number of entries in the cache.
+//
+// Size includes both expired and non-expired entries. Expired entries are
+// removed lazily on Get or by the background cleaner, so Size may include
+// entries that would return ErrNotFound on Get.
 func (mc *MemCache) Size() int {
 	mc.mx.RLock()
 	defer mc.mx.RUnlock()
@@ -258,7 +292,11 @@ func (mc *MemCache) Close(_ context.Context) error {
 
 // Digest returns a fingerprint for the current (non-expired) value of key.
 //
-// If key is missing or expired, Digest returns 0.
+// If key is missing or expired, Digest returns 0. The digest is computed
+// using FNV-1a hash of the value's string representation.
+//
+// Digest is safe for concurrent use. It does not remove expired entries;
+// use Get for lazy eviction.
 func (mc *MemCache) Digest(_ context.Context, key string) Digest {
 	mc.mx.RLock()
 	defer mc.mx.RUnlock()

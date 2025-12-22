@@ -15,6 +15,20 @@
 // Package cache provides a small cache abstraction and a simple in-memory
 // implementation with optional TTL expiration.
 //
-// The in-memory implementation supports both lazy eviction (on Get) and a
-// periodic background cleaner that removes expired items in bounded work per run.
+// The in-memory implementation (MemCache) is thread-safe and supports:
+//   - Lazy eviction: expired entries are removed on Get access
+//   - Periodic background cleaner: removes expired items in bounded batches
+//   - Optional TTL expiration per entry
+//   - Metrics tracking for cache performance
+//
+// Example usage:
+//
+//	cache := cache.New(logger)
+//	defer cache.Close(context.Background())
+//
+//	cache.Set(ctx, "key", "value", time.Minute)
+//	value, err := cache.Get(ctx, "key")
+//	if err != nil {
+//	    // handle error
+//	}
 package cache

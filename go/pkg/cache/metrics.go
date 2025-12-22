@@ -32,7 +32,6 @@ type Metrics struct {
 	LazyEvictions         uint32 `json:"lazy_evictions"`           // Expired items found during Get
 	ScheduledEvictions    uint32 `json:"scheduled_evictions"`      // Expired items removed by cleaner
 	CleanupRuns           uint32 `json:"cleanup_runs"`             // Number of scheduled cleanup runs
-	CleanupTimeouts       uint32 `json:"cleanup_timeouts"`         // Number of times cleanup exceeded interval
 	LastCleanupDurationMs uint64 `json:"last_cleanup_duration_ms"` // Duration of last cleanup in milliseconds
 	LastCleanupItems      uint32 `json:"last_cleanup_items"`       // Items cleaned in last run
 }
@@ -47,7 +46,6 @@ func (m *Metrics) Snapshot() Metrics {
 		LazyEvictions:         atomic.LoadUint32(&m.LazyEvictions),
 		ScheduledEvictions:    atomic.LoadUint32(&m.ScheduledEvictions),
 		CleanupRuns:           atomic.LoadUint32(&m.CleanupRuns),
-		CleanupTimeouts:       atomic.LoadUint32(&m.CleanupTimeouts),
 		LastCleanupDurationMs: atomic.LoadUint64(&m.LastCleanupDurationMs),
 		LastCleanupItems:      atomic.LoadUint32(&m.LastCleanupItems),
 	}
@@ -81,13 +79,8 @@ func (m *Metrics) AddScheduledEviction(count uint32) {
 	}
 }
 
-func (m *Metrics) AddCleanupRun(duration time.Duration, itemsCleaned uint32, timedOut bool) {
+func (m *Metrics) AddCleanupRun(duration time.Duration, itemsCleaned uint32) {
 	atomic.AddUint32(&m.CleanupRuns, 1)
-
-	if timedOut {
-		atomic.AddUint32(&m.CleanupTimeouts, 1)
-	}
-
 	atomic.StoreUint32(&m.LastCleanupItems, itemsCleaned)
 
 	ms := duration.Milliseconds()

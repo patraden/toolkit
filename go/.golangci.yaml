@@ -10,6 +10,8 @@ linters:
     - recvcheck
     - tparallel
     - usetesting
+    - exhaustruct
+    - funlen
 
 linters-settings:
   depguard:
@@ -37,3 +39,8 @@ linters-settings:
     ignore-decls:
       - sb strings.Builder
       - t testing.T
+      - wg sync.WaitGroup
+
+  testifylint:
+    disable:
+      - go-require

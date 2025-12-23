@@ -20,17 +20,17 @@ jobs:
           go-version: '1.24.1'
 
       - name: Install dependencies
-        working-directory: go
+        working-directory: .
         run: go mod download
 
       - name: Run Go tests with coverage
-        working-directory: go
+        working-directory: .
         run: go test -v -coverprofile=coverage.out ./...
 
       - name: Upload Go coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: go/coverage.out
+          files: coverage.out
           flags: go
           name: codecov-go
           fail_ci_if_error: true

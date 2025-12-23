@@ -30,7 +30,7 @@ jobs:
       - name: Upload Go coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: go/coverage.out
+          files: coverage.out
           flags: go
           name: codecov-go
           fail_ci_if_error: true

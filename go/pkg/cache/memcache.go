@@ -225,6 +225,8 @@ func (mc *MemCache) Delete(ctx context.Context, keys ...string) error {
 // between runs, but lazy eviction in Get ensures callers do not observe
 // expired values.
 func (mc *MemCache) cleaner(interval time.Duration) {
+	defer mc.cleanerWG.Done()
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -264,8 +266,6 @@ func (mc *MemCache) cleaner(interval time.Duration) {
 			mc.metrics.AddCleanupRun(duration, deleted)
 		case <-mc.stopCh:
 			mc.log.Info().Msg("gracefully stopped cache cleaner")
-			mc.cleanerWG.Done()
-
 			return
 		}
 	}

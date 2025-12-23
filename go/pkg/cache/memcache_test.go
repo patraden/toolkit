@@ -160,3 +160,89 @@ func TestMemCacheStress(t *testing.T) {
 		assert.Equal(t, uint32(0), m.Hits)
 	})
 }
+
+func TestMemCacheBackgroundCleaner(t *testing.T) {
+	t.Parallel()
+
+	log := Logger(t)
+
+	mcache := cache.WithDeleteInterval(5*time.Millisecond, log)
+
+	t.Cleanup(func() {
+		require.NoError(t, mcache.Close(t.Context()))
+	})
+
+	const keys = 100
+
+	for key := range keys {
+		err := mcache.Set(t.Context(), fmt.Sprintf("c-%d", key), key, 10*time.Millisecond)
+		require.NoError(t, err)
+	}
+
+	// Wait for all keys to expire.
+	time.Sleep(30 * time.Millisecond)
+
+	// Eventually the background cleaner should evict the expired keys.
+	require.Eventually(
+		t,
+		func() bool {
+			mt := mcache.Metrics()
+			return mt.ScheduledEvictions >= uint32(keys) && mcache.Size() == 0
+		},
+		time.Second,
+		10*time.Millisecond,
+	)
+}
+
+func TestMemCacheDigest(t *testing.T) {
+	t.Parallel()
+
+	log := Logger(t)
+	mcache := cache.New(log)
+
+	t.Cleanup(func() {
+		require.NoError(t, mcache.Close(t.Context()))
+	})
+
+	ctx := t.Context()
+
+	t.Run("missing key returns zero digest", func(t *testing.T) {
+		t.Parallel()
+
+		d := mcache.Digest(ctx, "missing")
+		assert.Equal(t, cache.Digest(0), d)
+	})
+
+	t.Run("primitive value has stable non-zero digest", func(t *testing.T) {
+		t.Parallel()
+
+		require.NoError(t, mcache.Set(ctx, "int", 42, 0))
+
+		d1 := mcache.Digest(ctx, "int")
+		d2 := mcache.Digest(ctx, "int")
+
+		assert.NotEqual(t, cache.Digest(0), d1)
+		assert.Equal(t, d1, d2)
+	})
+
+	t.Run("expired value returns zero digest", func(t *testing.T) {
+		t.Parallel()
+
+		require.NoError(t, mcache.Set(ctx, "exp", "val", 10*time.Millisecond))
+		time.Sleep(20 * time.Millisecond)
+
+		d := mcache.Digest(ctx, "exp")
+		assert.Equal(t, cache.Digest(0), d)
+	})
+
+	t.Run("unsupported type returns zero digest", func(t *testing.T) {
+		t.Parallel()
+
+		type custom struct{ X int }
+
+		require.NoError(t, mcache.Set(ctx, "custom", custom{X: 1}, 0))
+
+		d := mcache.Digest(ctx, "custom")
+		assert.Equal(t, cache.Digest(0), d)
+	})
+}

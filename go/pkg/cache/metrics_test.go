@@ -1,81 +1,100 @@
-package cache
+// Copyright 2025 The Toolkit Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package cache_test
 
 import (
 	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/patraden/toolkit/pkg/cache"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMetricsCounters(t *testing.T) {
 	t.Parallel()
 
-	var m Metrics
+	var mtrcs cache.Metrics
 
-	m.AddHit()
-	m.AddHit()
-	m.AddMiss()
-	m.AddSet()
-	m.AddSet()
-	m.AddSet()
-	m.AddDelete(0) // should be a no-op
-	m.AddDelete(2) // increments by 2
-	m.AddLazyEviction()
-	m.AddScheduledEviction(0) // no-op
-	m.AddScheduledEviction(3)
+	mtrcs.AddHit()
+	mtrcs.AddHit()
+	mtrcs.AddMiss()
+	mtrcs.AddSet()
+	mtrcs.AddSet()
+	mtrcs.AddSet()
+	mtrcs.AddDelete(0) // should be a no-op
+	mtrcs.AddDelete(2) // increments by 2
+	mtrcs.AddLazyEviction()
+	mtrcs.AddScheduledEviction(0) // no-op
+	mtrcs.AddScheduledEviction(3)
 
-	s := m.Snapshot()
+	snps := mtrcs.Snapshot()
 
-	assert.Equal(t, uint32(2), s.Hits)
-	assert.Equal(t, uint32(1), s.Misses)
-	assert.Equal(t, uint32(3), s.Sets)
-	assert.Equal(t, uint32(2), s.Deletes)
-	assert.Equal(t, uint32(1), s.LazyEvictions)
-	assert.Equal(t, uint32(3), s.ScheduledEvictions)
+	assert.Equal(t, uint32(2), snps.Hits)
+	assert.Equal(t, uint32(1), snps.Misses)
+	assert.Equal(t, uint32(3), snps.Sets)
+	assert.Equal(t, uint32(2), snps.Deletes)
+	assert.Equal(t, uint32(1), snps.LazyEvictions)
+	assert.Equal(t, uint32(3), snps.ScheduledEvictions)
 }
 
 func TestMetricsCleanupRun(t *testing.T) {
 	t.Parallel()
 
-	var m Metrics
+	var mtrcs cache.Metrics
 
-	m.AddCleanupRun(0, 0)
+	mtrcs.AddCleanupRun(0, 0)
 
-	s := m.Snapshot()
-	assert.Equal(t, uint32(1), s.CleanupRuns)
-	assert.Equal(t, uint32(0), s.LastCleanupItems)
-	assert.Equal(t, uint64(0), s.LastCleanupDurationMs)
+	snps := mtrcs.Snapshot()
+	assert.Equal(t, uint32(1), snps.CleanupRuns)
+	assert.Equal(t, uint32(0), snps.LastCleanupItems)
+	assert.Equal(t, uint64(0), snps.LastCleanupDurationMs)
 
-	m.AddCleanupRun(10*time.Millisecond, 5)
+	mtrcs.AddCleanupRun(10*time.Millisecond, 5)
 
-	s = m.Snapshot()
-	assert.Equal(t, uint32(2), s.CleanupRuns)
-	assert.Equal(t, uint32(5), s.LastCleanupItems)
-	assert.Equal(t, uint64(10), s.LastCleanupDurationMs)
+	snps = mtrcs.Snapshot()
+	assert.Equal(t, uint32(2), snps.CleanupRuns)
+	assert.Equal(t, uint32(5), snps.LastCleanupItems)
+	assert.Equal(t, uint64(10), snps.LastCleanupDurationMs)
 }
 
 func TestMetricsJSONStr(t *testing.T) {
 	t.Parallel()
 
-	var m Metrics
-	m.AddHit()
-	m.AddMiss()
+	var (
+		mtrcs   cache.Metrics
+		decoded cache.Metrics
+	)
 
-	js := m.JSONStr()
+	mtrcs.AddHit()
+	mtrcs.AddMiss()
 
-	var decoded Metrics
+	js := mtrcs.JSONStr()
+
 	err := json.Unmarshal([]byte(js), &decoded)
-	assert.NoError(t, err, "JSONStr should return valid JSON")
+	require.NoError(t, err, "JSONStr should return valid JSON")
 
-	s := m.Snapshot()
-	assert.Equal(t, s.Hits, decoded.Hits)
-	assert.Equal(t, s.Misses, decoded.Misses)
-	assert.Equal(t, s.Sets, decoded.Sets)
-	assert.Equal(t, s.Deletes, decoded.Deletes)
-	assert.Equal(t, s.LazyEvictions, decoded.LazyEvictions)
-	assert.Equal(t, s.ScheduledEvictions, decoded.ScheduledEvictions)
-	assert.Equal(t, s.CleanupRuns, decoded.CleanupRuns)
-	assert.Equal(t, s.LastCleanupDurationMs, decoded.LastCleanupDurationMs)
-	assert.Equal(t, s.LastCleanupItems, decoded.LastCleanupItems)
+	snps := mtrcs.Snapshot()
+	assert.Equal(t, snps.Hits, decoded.Hits)
+	assert.Equal(t, snps.Misses, decoded.Misses)
+	assert.Equal(t, snps.Sets, decoded.Sets)
+	assert.Equal(t, snps.Deletes, decoded.Deletes)
+	assert.Equal(t, snps.LazyEvictions, decoded.LazyEvictions)
+	assert.Equal(t, snps.ScheduledEvictions, decoded.ScheduledEvictions)
+	assert.Equal(t, snps.CleanupRuns, decoded.CleanupRuns)
+	assert.Equal(t, snps.LastCleanupDurationMs, decoded.LastCleanupDurationMs)
+	assert.Equal(t, snps.LastCleanupItems, decoded.LastCleanupItems)
 }

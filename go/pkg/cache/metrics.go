@@ -99,7 +99,7 @@ func (m *Metrics) AddCleanupRun(duration time.Duration, itemsCleaned uint32) {
 func (m *Metrics) JSONStr() string {
 	b, err := json.Marshal(m.Snapshot())
 	if err != nil {
-		return fmt.Sprintf(`"error":"%v"`, err)
+		return fmt.Sprintf(`{"error":%q}`, err.Error())
 	}
 
 	return string(b)

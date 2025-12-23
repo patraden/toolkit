@@ -120,7 +120,7 @@ func (mc *MemCache) invalidated(key string) bool {
 	return false
 }
 
-// Fast get with concurrent read.
+// Fast and simple get with concurrent read.
 func (mc *MemCache) get(key string) (entry, error) {
 	mc.mx.RLock()
 	defer mc.mx.RUnlock()
@@ -136,19 +136,18 @@ func (mc *MemCache) get(key string) (entry, error) {
 
 // Get returns the cached value for key.
 //
-// If the entry is missing or expired, Get returns ErrNotFound.
-// Expired entries are removed lazily on access (when Get is called).
+// If the entry is missing or expired, Get returns ErrNotFound. Expired
+// entries are removed lazily on access (when Get is called) or by the
+// background cleaner. Get guarantees that it never returns a value that
+// is expired at the time of the final check.
 //
 // Get is safe for concurrent use. It uses read locks for fast access and
-// only acquires a write lock when deleting expired entries. If a key is
-// refreshed between the read and write lock acquisition, Get will return
-// the fresh value.
+// only acquires a write lock when deleting expired entries.
 func (mc *MemCache) Get(_ context.Context, key string) (any, error) {
 	val, err := mc.get(key)
 	if err != nil {
 		return nil, err
 	}
-
 	// lazy invalidation
 	if val.IsExpired() {
 		if mc.invalidated(key) {
@@ -158,9 +157,17 @@ func (mc *MemCache) Get(_ context.Context, key string) (any, error) {
 			return nil, ErrNotFound
 		}
 
+		// Key was refreshed between locks, re-read once.
 		val, err = mc.get(key)
 		if err != nil {
 			return nil, err
+		}
+
+		// If the refreshed value is already expired, treat as not found.
+		// Background cleaner will eventually evict it; no need to delete here.
+		if val.IsExpired() {
+			mc.metrics.AddMiss()
+			return nil, ErrNotFound
 		}
 	}
 
@@ -203,6 +210,20 @@ func (mc *MemCache) Delete(ctx context.Context, keys ...string) error {
 	return nil
 }
 
+// cleaner runs periodically and removes expired entries from the cache.
+//
+// It is started automatically by New/WithDeleteInterval in a background
+// goroutine and stops when Close is called. On each tick it:
+//   - scans the map under a read lock and collects up to MaxDeletesPerRun
+//     keys whose entries appear expired
+//   - for each candidate key, calls invalidated (under a write lock) to
+//     re-check expiration and delete the entry if it is still expired
+//   - records metrics about how many items were evicted and how long the
+//     cleanup took
+//
+// The cleaner is best-effort: it may leave some expired entries around
+// between runs, but lazy eviction in Get ensures callers do not observe
+// expired values.
 func (mc *MemCache) cleaner(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -292,11 +313,12 @@ func (mc *MemCache) Close(_ context.Context) error {
 
 // Digest returns a fingerprint for the current (non-expired) value of key.
 //
-// If key is missing or expired, Digest returns 0. The digest is computed
-// using FNV-1a hash of the value's string representation.
+// If key is missing or expired, Digest returns 0. For MemCache, the digest is
+// defined and stable for primitive types (string, []byte, bool, ints, uints,
+// floats). For other value types, Digest returns 0.
 //
-// Digest is safe for concurrent use. It does not remove expired entries;
-// use Get for lazy eviction.
+// Digest is safe for concurrent use. It does not remove expired entries; use
+// Get for lazy eviction.
 func (mc *MemCache) Digest(_ context.Context, key string) Digest {
 	mc.mx.RLock()
 	defer mc.mx.RUnlock()

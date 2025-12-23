@@ -57,8 +57,35 @@ func (e entry) Digest() Digest {
 		return 0
 	}
 
-	h := fnv.New64a()
-	fmt.Fprint(h, e.value)
+	hash := fnv.New64a()
 
-	return Digest(h.Sum64())
+	switch val := e.value.(type) {
+	case nil:
+		return 0
+	case []byte:
+		_, _ = hash.Write(val)
+	case string:
+		_, _ = hash.Write([]byte(val))
+	case int, int8, int16, int32, int64:
+		fmt.Fprintf(hash, "%d", val)
+	case uint, uint8, uint16, uint32, uint64, uintptr:
+		fmt.Fprintf(hash, "%d", val)
+	case float32, float64:
+		fmt.Fprintf(hash, "%g", val)
+	case bool:
+		_, _ = hash.Write([]byte{boolToUint8(val)})
+	default:
+		// Unsupported type: no stable, cheap digest defined.
+		return 0
+	}
+
+	return Digest(hash.Sum64())
+}
+
+func boolToUint8(b bool) uint8 {
+	if b {
+		return 1
+	}
+
+	return 0
 }

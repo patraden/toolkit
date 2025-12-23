@@ -20,7 +20,10 @@ import (
 )
 
 // Digest is a stable, cheap fingerprint of a cached value.
-// Implementations may return 0 when a key is missing or the value is expired.
+//
+// For this package's MemCache implementation, Digest is defined and stable for
+// primitive types (string, []byte, bool, ints, uints, floats). For other
+// types, or when a key is missing or expired, implementations may return 0.
 type Digest uint64
 
 // Cache is a minimal cache interface with TTL support.

@@ -1,0 +1,11 @@
+[raspberries]
+rasp31.local
+rasp41.local
+rasp42.local
+
+[raspberry3]
+rasp31.local
+
+[raspberry4]
+rasp41.local
+rasp42.local

@@ -1,0 +1,16 @@
+# code: language=ansible
+---
+# Go language SDK version number
+golang_version: '1.22.0'
+
+# Base installation directory the Go language SDK distribution
+golang_download_dir: '/tmp/go/'
+
+# Base installation directory the Go language SDK distribution
+golang_install_dir: '/usr/local/go/{{ golang_version }}'
+
+# Architecture of the raspberry PI
+golang_architecture: arm64
+
+# Filename of Go language SDK redistributable package
+golang_filename: 'go{{ golang_version }}.linux-{{ golang_architecture }}.tar.gz'

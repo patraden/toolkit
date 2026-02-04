@@ -1,0 +1,7 @@
+---
+# This playbook install pyenv
+
+- hosts: raspberries
+  remote_user: d.patrakhin
+  roles:
+    - golang

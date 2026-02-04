@@ -1,0 +1,12 @@
+---
+
+- hosts: raspberries
+  gather_facts: no
+  tasks:
+    - name: shutdown
+      become: true
+      ansible.builtin.shell: |
+        sleep 2
+        /sbin/shutdown -h now
+      async: 1
+      poll: 0

@@ -1,3 +1,11 @@
+## list schedulers
+
+```shell
+VERTICA_HOST="hostname" VERTICA_PASSWORD="password" VERTICA_DB="db" ./list_schedulers.sh schema_name
+```
+
+Uses `sql/vertica/schedulers/list.sql` with vsql variable `:schema` to list stream microbatches, load specs, sources, and targets for the given schema. Default output is vsql’s default formatting; pass `--html` for HTML table output.
+
 ## copy from/to Vertica
 
 ```shell

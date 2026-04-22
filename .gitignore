@@ -1,0 +1,43 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.txt
+
+# macOS
+.DS_Store
+
+# Build directories
+/bin/
+
+# Logs, temp files
+*.log
+tmp/
+temp/
+.ssh/
+
+# Heavy binary artifacts (installer packages, archives). Vendored under
+# deploy/docker/vertica/*/packages/ for image builds; never committed.
+*.rpm
+*.deb
+*.tar
+*.tar.gz
+*.tgz
+*.tar.xz
+*.tar.bz2
+*.zip
+
+# Belt-and-braces: ignore everything under any packages/ vendor dir, keep the
+# dir itself around (.gitkeep / README.md stay tracked).
+packages/*
+!packages/.gitkeep
+!packages/README.md
+
+# Environment files: the .env.example template is source-controlled; actual
+# sourced .env variants (local secrets, per-host overrides) are not.
+.env
+.env.local
+.env.*.local
+!.env.example

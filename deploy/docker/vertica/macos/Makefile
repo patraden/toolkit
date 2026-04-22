@@ -72,11 +72,16 @@ BUILD_ARGS = \
     --build-arg vertica_db_group=$(VERTICA_DB_GROUP) \
     --build-arg vertica_db_name=$(VERTICA_DB_NAME)
 
-# ---- cluster runtime defaults ----------------------------------------------
-
-VERTICA_COMPOSE_CONTAINERS ?= vertica1 vertica2 vertica3
-VERTICA_LEADER             ?= vertica1
-VERTICA_HOSTS              ?= 172.28.0.11,172.28.0.12,172.28.0.13
+# ---- cluster topology (must mirror docker-compose.yml) ----------------------
+#
+# These are NOT intended to be overridden on the Make command line; they
+# mirror the fixed topology declared in docker-compose.yml (container names,
+# static IPs on the `vertica_cluster` network, and which node has
+# VERTICA_CLUSTER_ROLE=leader). If you need a different topology, edit
+# docker-compose.yml and update these defaults accordingly, then
+# `make clean && make compose-up && make install-vertica`.
+VERTICA_LEADER ?= vertica1
+VERTICA_HOSTS  ?= 172.28.0.11,172.28.0.12,172.28.0.13
 
 # Must match the Dockerfile: ${VERTICA_DATA_DIR}/${vertica_db_name}_catalog and
 # ${VERTICA_DATA_DIR}/${vertica_db_name}_data (two sibling dirs).
@@ -99,7 +104,7 @@ VERTICA_INSTALL_RPM_PATH ?= /opt/vertica/install-rpm/$(VERTICA_PACKAGE)
 all: docker-build-node
 
 display:
-	$(info Vertica cluster - build parameters)
+	$(info ===> Vertica cluster - build parameters)
 	$(info   IMAGE_NODE_NAME     = $(IMAGE_NODE_NAME))
 	$(info   TAG                 = $(TAG))
 	$(info   VERTICA_NODE_IMAGE  = $(VERTICA_NODE_IMAGE))
@@ -110,10 +115,10 @@ display:
 	$(info   VERTICA_DB_UID      = $(VERTICA_DB_UID))
 	$(info   VERTICA_DB_GID      = $(VERTICA_DB_GID))
 	$(info   VERTICA_DB_NAME     = $(VERTICA_DB_NAME))
-	$(info Runtime)
-	$(info   CONTAINERS          = $(VERTICA_COMPOSE_CONTAINERS))
+	$(info ===> Topology (mirrors docker-compose.yml))
 	$(info   LEADER              = $(VERTICA_LEADER))
 	$(info   VERTICA_HOSTS       = $(VERTICA_HOSTS))
+	$(info ===> Paths inside each container)
 	$(info   CATALOG DIR         = $(VERTICA_DB_CATALOG_DIR))
 	$(info   DATA DIR            = $(VERTICA_DB_DATA_DIR))
 	$(info   RPM IN CONTAINER    = $(VERTICA_INSTALL_RPM_PATH))

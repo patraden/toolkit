@@ -93,6 +93,11 @@ Build args that also flow through at runtime to `install-vertica`,
 pre-created catalog/data dirs (`/data/vertica/${VERTICA_DB_NAME}_{catalog,data}`)
 match what `admintools` expects.
 
+> **Note**: if a cluster is already running when you change any of these,
+> you also need `make clean` to drop the `/data` volumes. Otherwise the
+> persisted `admintools.conf`, catalog/data dirs and `dbadmin` SSH keys will
+> still reference the previous values and startup will fail.
+
 | Environment Variable | Description | Default Value |
 | :------------------- | :---------- | :------------ |
 | `VERTICA_DB_USER` | OS user and implicit database [superuser](https://www.vertica.com/docs/latest/HTML/Content/Authoring/AdministratorsGuide/DBUsersAndPrivileges/Privileges/AboutSuperuserPrivileges.htm). | `dbadmin` |
@@ -103,15 +108,32 @@ match what `admintools` expects.
 
 ### Runtime only
 
-No rebuild required; override on the Make command line or via the
-environment.
+No rebuild required; override on the Make command line or export before
+running `make`.
 
 | Environment Variable | Description | Default Value |
 | :------------------- | :---------- | :------------ |
-| `VERTICA_COMPOSE_CONTAINERS` | Service names Compose spins up. | `vertica1 vertica2 vertica3` |
-| `VERTICA_LEADER` | Container that runs `install_vertica`, `create_db`, VMart load, and the leader-only auto-`start_db` on boot. | `vertica1` |
-| `VERTICA_HOSTS` | Comma-separated node IPs passed to `install_vertica -s`. Must match `docker-compose.yml`. | `172.28.0.11,172.28.0.12,172.28.0.13` |
-| `VERTICA_DB_PASSWORD` | Password for `VERTICA_DB_USER`, passed to `create_db`. Empty means no password. | _(empty)_ |
+| `VERTICA_DB_PASSWORD` | Password for `VERTICA_DB_USER`, passed once to `admintools -t create_db -p`. Empty means no password. | _(empty)_ |
+| `VERTICA1_DB_PORT` / `VERTICA1_SSH_PORT` | Host ports mapped to `vertica1:5433` / `vertica1:22`. | `54331` / `10022` |
+| `VERTICA2_DB_PORT` / `VERTICA2_SSH_PORT` | Host ports mapped to `vertica2:5433` / `vertica2:22`. | `54332` / `10023` |
+| `VERTICA3_DB_PORT` / `VERTICA3_SSH_PORT` | Host ports mapped to `vertica3:5433` / `vertica3:22`. | `54333` / `10024` |
+
+### Fixed in `docker-compose.yml`
+
+Cluster topology is not overridable from the Make command line — it is
+hardcoded in [`docker-compose.yml`](./docker-compose.yml) to keep the
+`install_vertica` step reproducible. To change any of the following, edit
+`docker-compose.yml` directly (and keep the matching defaults in `Makefile`
+aligned) and then `make clean && make compose-up && make install-vertica`:
+
+- Container names (`vertica1`, `vertica2`, `vertica3`) — pinned via
+  `container_name` on each service.
+- Per-node IPs (`172.28.0.11/12/13`) and subnet (`172.28.0.0/24`) — pinned
+  via `networks.vertica_cluster.ipv4_address` and `networks.*.ipam`.
+- Which node auto-starts the database on `compose up` — pinned via
+  `VERTICA_CLUSTER_ROLE: leader` on `vertica1` (all others are followers).
+- Number of nodes — add/remove services in `docker-compose.yml` and update
+  `VERTICA_HOSTS` in `Makefile` to match.
 
 ## Build and run
 
@@ -146,7 +168,7 @@ is treated as a failure. The command exits non-zero if any test failed.
 | 01 | `01_cluster_up.sql` | All 3 nodes report `node_state = 'UP'` in `v_catalog.nodes`. | `create-db` |
 | 02 | `02_ksafety.sql` | `designed_fault_tolerance = current_fault_tolerance = 1` (K=1). | `create-db` |
 | 03 | `03_license.sql` | At least one row in `v_catalog.licenses` (proves `install_vertica --license CE` ran). | `install-vertica` |
-| 04 | `04_flex_table_loaded.sql` | `FlexTableLib` UDx library is registered. Adapted from the upstream one-node-ce smoke test. | `create-db` |
+| 04 | `04_flex_table_loaded.sql` | End-to-end flex-table smoke test: creates a flex table, ingests JSON via `FJSONPARSER`, runs `COMPUTE_FLEXTABLE_KEYS`, and verifies extracted values via `MapLookup`. Implicitly covers that `FlexTableLib` is registered on every node. | `create-db` |
 | 05 | `05_vmart_loaded.sql` | `store_sales_fact`, `online_sales_fact`, `inventory_fact` have the expected row counts from `vmart_gen`. | `load-vmart` (else SKIP) |
 | 06 | `06_data_distribution.sql` | `store_sales_fact` has rows on all 3 nodes (segmentation actually reached the whole cluster). | `load-vmart` (else SKIP) |
 | 07 | `07_segmentation_balance.sql` | Coefficient of variation of `store_sales_fact` row counts across nodes is < 0.20 (hash segmentation is balanced). | `load-vmart` (else SKIP) |

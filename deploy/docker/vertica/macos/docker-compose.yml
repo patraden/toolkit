@@ -37,6 +37,10 @@ services:
     cap_add:
       - AUDIT_WRITE
       - SYS_NICE
+    # Give the leader's SIGTERM trap (docker-entrypoint.sh) enough time to
+    # run `admintools -t stop_db` before Docker escalates to SIGKILL.
+    # Default is 10s, which is too short on Colima cold shutdowns.
+    stop_grace_period: 60s
 
   vertica2:
     image: ${VERTICA_NODE_IMAGE:-vertica-ce-node:latest}
@@ -57,6 +61,7 @@ services:
     cap_add:
       - AUDIT_WRITE
       - SYS_NICE
+    stop_grace_period: 60s
 
   vertica3:
     image: ${VERTICA_NODE_IMAGE:-vertica-ce-node:latest}
@@ -77,6 +82,7 @@ services:
     cap_add:
       - AUDIT_WRITE
       - SYS_NICE
+    stop_grace_period: 60s
 
 networks:
   vertica_cluster:

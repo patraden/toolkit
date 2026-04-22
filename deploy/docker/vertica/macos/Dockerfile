@@ -142,8 +142,6 @@ ENV VMART_CONFIRM_LOAD_SCHEMA="public"
 ENV VMART_CONFIRM_LOAD_TABLE="vmart_load_success"
 ENV VMART_ETL_SCRIPT="01_load_vmart_schema.sh"
 ENV VMART_ETL_SQL="02_vmart_etl.sql"
-ENV ENTRYPOINT_SCRIPT="docker-entrypoint.sh"
-ENV ENTRYPOINT_SCRIPT_PATH="${VERTICA_HOME_DIR}/${ENTRYPOINT_SCRIPT}"
 # install_vertica needs --rpm to push to other nodes; local host must also show vertica in rpmdb.
 ENV VERTICA_INSTALL_RPM_PATH="${VERTICA_OPT_DIR}/install-rpm/${vertica_package}"
 
@@ -210,12 +208,9 @@ RUN set -x \
     && chmod 0755 ${VERTICA_DATA_DIR}/${vertica_db_name}_catalog \
                   ${VERTICA_DATA_DIR}/${vertica_db_name}_data \
         && chown -R $vertica_db_user:$vertica_db_group /home/$vertica_db_user \
-    # but this chown is expensive in image-size, so we use aother
-    # trick in the first half of the build 
-    # && chown -R $vertica_db_user:$vertica_db_group ${VERTICA_OPT_DIR} \
-    # Link OS timezones, check entrypoint script
-    # && rm -rf ${VERTICA_OPT_DIR}/share/timezone \
-    # && ln -sT /usr/share/zoneinfo ${VERTICA_OPT_DIR}/share/timezone \
+    # Note: a recursive chown on ${VERTICA_OPT_DIR} would be correct here but
+    # is too expensive in image size; the builder stage already set ownership
+    # and `chmod -R g+w` there, and dbadmin is in the root group to compensate.
     # Files already from builder COPY; only update rpmdb so install_vertica local check passes (avoids "upgrade locally" + script bug).
     && rpm -ivh --nodeps --nosignature --noscripts --justdb "/opt/vertica/install-rpm/${vertica_package}" \
         && yum clean all \
@@ -228,8 +223,13 @@ RUN chmod 0755 ${VMART_DIR}/${VMART_ETL_SCRIPT} \
           ${VMART_DIR}/${VMART_ETL_SQL} \
           ${VMART_DIR}/${VMART_ETL_SCRIPT}
 
-ADD ./${ENTRYPOINT_SCRIPT} ${ENTRYPOINT_SCRIPT_PATH}
-RUN chmod +x ${ENTRYPOINT_SCRIPT_PATH}
+# Entrypoint lives under /usr/local/bin (outside $HOME, so it is unaffected by
+# preserve_dbadmin_home's /home/dbadmin -> /data/dbadmin_home redirection)
+# and is invoked via the JSON-array (exec) form of ENTRYPOINT below so that
+# the script itself runs as PID 1 and receives SIGTERM directly for graceful
+# shutdown (admintools -t stop_db on the leader).
+ADD ./docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
 
 ADD ./env_setup/.vsqlrc /home/${vertica_db_user}/.vsqlrc
 RUN chown ${vertica_db_user}:${vertica_db_group} /home/${vertica_db_user}/.vsqlrc
@@ -253,7 +253,7 @@ WORKDIR /root
 
 VOLUME ${VERTICA_VOLUME_DIR}
 
-ENTRYPOINT $ENTRYPOINT_SCRIPT_PATH
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # ssh port
 EXPOSE 22

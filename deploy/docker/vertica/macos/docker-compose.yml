@@ -1,0 +1,100 @@
+# Copyright 2026 Denis Patrakhin
+# SPDX-License-Identifier: Apache-2.0
+#
+# Three-node Vertica cluster (same image).
+
+services:
+  vertica1:
+    image: ${VERTICA_NODE_IMAGE:-vertica-ce-node:latest}
+    container_name: vertica1
+    # Mirrors Makefile BUILD_ARGS so `docker compose build` produces the same
+    # image as `make docker-build-node`. Keep these in sync.
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        os_image: ${OS_IMAGE:-almalinux}
+        os_version: ${OS_VERSION:-8.10}
+        vertica_package: ${VERTICA_PACKAGE}
+        dbadmin_id: ${VERTICA_DB_UID:-1000}
+        dbadmin_gid: ${VERTICA_DB_GID:-1000}
+        vertica_db_user: ${VERTICA_DB_USER:-dbadmin}
+        vertica_db_group: ${VERTICA_DB_GROUP:-verticadba}
+        vertica_db_name: ${VERTICA_DB_NAME:-dockerdb}
+    hostname: vertica1
+    environment:
+      VERTICA_CLUSTER_ROLE: leader
+      VERTICA_DB_NAME: ${VERTICA_DB_NAME:-dockerdb}
+    networks:
+      vertica_cluster:
+        ipv4_address: 172.28.0.11
+    volumes:
+      - vertica1_data:/data
+    ports:
+      - "${VERTICA1_DB_PORT:-54331}:5433"
+      - "${VERTICA1_SSH_PORT:-10022}:22"
+    platform: linux/amd64
+    cap_add:
+      - AUDIT_WRITE
+      - SYS_NICE
+    # Give the leader's SIGTERM trap (docker-entrypoint.sh) enough time to
+    # run `admintools -t stop_db` before Docker escalates to SIGKILL.
+    # Default is 10s, which is too short on Colima cold shutdowns.
+    stop_grace_period: 60s
+
+  vertica2:
+    image: ${VERTICA_NODE_IMAGE:-vertica-ce-node:latest}
+    container_name: vertica2
+    hostname: vertica2
+    environment:
+      VERTICA_CLUSTER_ROLE: follower
+      VERTICA_DB_NAME: ${VERTICA_DB_NAME:-dockerdb}
+    networks:
+      vertica_cluster:
+        ipv4_address: 172.28.0.12
+    volumes:
+      - vertica2_data:/data
+    ports:
+      - "${VERTICA2_DB_PORT:-54332}:5433"
+      - "${VERTICA2_SSH_PORT:-10023}:22"
+    platform: linux/amd64
+    cap_add:
+      - AUDIT_WRITE
+      - SYS_NICE
+    # Followers only exit on shutdown (no stop_db), so the default 10s would
+    # work — 15s keeps some headroom for slow Colima SIGTERM delivery without
+    # matching the leader's 60s.
+    stop_grace_period: 15s
+
+  vertica3:
+    image: ${VERTICA_NODE_IMAGE:-vertica-ce-node:latest}
+    container_name: vertica3
+    hostname: vertica3
+    environment:
+      VERTICA_CLUSTER_ROLE: follower
+      VERTICA_DB_NAME: ${VERTICA_DB_NAME:-dockerdb}
+    networks:
+      vertica_cluster:
+        ipv4_address: 172.28.0.13
+    volumes:
+      - vertica3_data:/data
+    ports:
+      - "${VERTICA3_DB_PORT:-54333}:5433"
+      - "${VERTICA3_SSH_PORT:-10024}:22"
+    platform: linux/amd64
+    cap_add:
+      - AUDIT_WRITE
+      - SYS_NICE
+    stop_grace_period: 15s
+
+networks:
+  vertica_cluster:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  vertica1_data:
+  vertica2_data:
+  vertica3_data:

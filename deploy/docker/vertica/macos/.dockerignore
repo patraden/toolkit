@@ -1,0 +1,33 @@
+# .dockerignore — trim the build context sent to `docker build`.
+#
+# The Dockerfile only needs: Dockerfile itself, packages/, tools/, env_setup/,
+# vmart/, docker-entrypoint.sh, and .ssh/ (id_rsa + id_rsa.pub). Everything
+# else below is noise for the build and should stay on the host.
+
+# Docs / orchestration — not needed inside the image
+README.md
+README.old.md
+docker-compose.yml
+Makefile
+.env
+.env.*
+!.env.example
+
+# Tests are run from the host against a running cluster; never go into the image
+tests/
+
+# Version control artefacts
+.git/
+.gitignore
+.gitattributes
+
+# Editor / OS cruft
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*.orig
+
+# Anything anyone ever pointed at as an "original" backup
+*.original

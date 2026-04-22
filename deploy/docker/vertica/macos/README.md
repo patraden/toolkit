@@ -37,16 +37,16 @@ Key differences from the upstream one-node example:
    request or from an internal mirror.
 
 3. An SSH keypair at `.ssh/id_rsa` and `.ssh/id_rsa.pub`.
-   The build copies them into `/root/.ssh/` inside the image and seeds
+   The build copies them into `/root/.ssh/` inside the image (with
+   `install -m 600 / -m 644`, so host-side modes don't matter) and seeds
    `/root/.ssh/authorized_keys` for passwordless root SSH between nodes.
 
    Either reuse your personal keypair from `~/.ssh`:
+
    ```shell
    mkdir -p .ssh
    cp ~/.ssh/id_rsa     .ssh/id_rsa
    cp ~/.ssh/id_rsa.pub .ssh/id_rsa.pub
-   chmod 0600 .ssh/id_rsa
-   chmod 0644 .ssh/id_rsa.pub
    ```
 
    Or generate a dedicated one for this cluster (recommended if your personal
@@ -195,8 +195,11 @@ yet, so `make test` is also useful immediately after `make create-db`.
 
 - Containers: `vertica1`, `vertica2`, `vertica3`
 - IPs (internal): `172.28.0.11`, `172.28.0.12`, `172.28.0.13`
-- Host port mappings (override via `make VERTICA1_DB_PORT=... compose-up` or by
-  exporting the variable from your shell — see `.env.example`):
+- Host port mappings (defaults shown). Override either inline
+  (`make VERTICA1_DB_PORT=... compose-up`) or by uncommenting the matching
+  `export VERTICA*_{DB,SSH}_PORT=...` line in [`.env.example`](./.env.example)
+  and `source`-ing it before `make compose-up`. Run `make display` to confirm
+  the effective values:
 
   | Service | DB (5433) | SSH (22) |
   | :------ | :-------- | :------- |

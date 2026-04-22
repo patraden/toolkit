@@ -1,25 +1,37 @@
--- (c) Copyright [2021-2023] Open Text.
--- Copyright 2026 Denis Patrakhin (modifications to this file)
+-- Copyright 2026 Denis Patrakhin
 -- SPDX-License-Identifier: Apache-2.0
 --
--- Licensed under the Apache License, Version 2.0 (the "License");
--- you may not use this file except in compliance with the License.
--- You may obtain a copy of the License at
---
---     http://www.apache.org/licenses/LICENSE-2.0
---
--- Unless required by applicable law or agreed to in writing, software
--- distributed under the License is distributed on an "AS IS" BASIS,
--- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
--- See the License for the specific language governing permissions and
--- limitations under the License.
---
--- Based on: https://github.com/vertica/vertica-containers/blob/main/one-node-ce/tests/flex_table_loaded.sql
+-- Functional flex-table smoke test: create a flex table, ingest JSON via
+-- FJSONPARSER, compute virtual keys, and verify MapLookup-based virtual-column
+-- extraction against the ingested rows. This implicitly covers that the
+-- FlexTableLib UDx library is registered and loadable on every node
+-- (CREATE FLEX TABLE, FJSONPARSER, COMPUTE_FLEXTABLE_KEYS, and MapLookup all
+-- resolve against it).
+DROP TABLE IF EXISTS public.test04_flex CASCADE;
+
+CREATE FLEX TABLE public.test04_flex();
+
+COPY public.test04_flex FROM STDIN PARSER FJSONPARSER() ABORT ON ERROR;
+{"name":"alice","n":1}
+{"name":"bob","n":2}
+{"name":"carol","n":3}
+\.
+
+SELECT COMPUTE_FLEXTABLE_KEYS('public.test04_flex');
+
+WITH extracted AS (
+    SELECT MapLookup(__raw__, 'name')::VARCHAR AS name
+    FROM public.test04_flex
+)
 SELECT CASE
-    WHEN COUNT(*) > 0 THEN 'PASS'
-    ELSE 'FAIL:flex_table_lib_not_registered'
+    WHEN COUNT(*) = 3
+     AND SUM((name IS NOT NULL)::INT) = 3
+     AND MAX(name) = 'carol'
+        THEN 'PASS'
+    ELSE 'FAIL:c=' || COUNT(*)::VARCHAR
+         || '_named=' || SUM((name IS NOT NULL)::INT)::VARCHAR
+         || '_maxname=' || COALESCE(MAX(name), 'null')
 END
-FROM v_monitor.user_libraries ul
-JOIN v_monitor.user_library_manifest ulm
-  ON ul.lib_name = ulm.lib_name
-WHERE ulm.lib_name = 'FlexTableLib';
+FROM extracted;
+
+DROP TABLE public.test04_flex CASCADE;

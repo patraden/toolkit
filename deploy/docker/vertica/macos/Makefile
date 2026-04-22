@@ -62,6 +62,15 @@ VERTICA_DB_GROUP    ?= verticadba
 VERTICA_DB_NAME     ?= dockerdb
 VERTICA_DB_PASSWORD ?=
 
+# Host port mappings for each node's DB (5433) and SSH (22) ports. Defaults
+# must stay in sync with the `${VAR:-default}` fallbacks in docker-compose.yml.
+VERTICA1_DB_PORT  ?= 54331
+VERTICA1_SSH_PORT ?= 10022
+VERTICA2_DB_PORT  ?= 54332
+VERTICA2_SSH_PORT ?= 10023
+VERTICA3_DB_PORT  ?= 54333
+VERTICA3_SSH_PORT ?= 10024
+
 BUILD_ARGS = \
     --build-arg os_image=$(OS_IMAGE) \
     --build-arg os_version=$(OS_VERSION) \
@@ -122,6 +131,11 @@ display:
 	$(info   CATALOG DIR         = $(VERTICA_DB_CATALOG_DIR))
 	$(info   DATA DIR            = $(VERTICA_DB_DATA_DIR))
 	$(info   RPM IN CONTAINER    = $(VERTICA_INSTALL_RPM_PATH))
+	$(info ===> Runtime (overridable))
+	$(info   VERTICA_DB_PASSWORD = $(if $(VERTICA_DB_PASSWORD),<set>,<empty>))
+	$(info   VERTICA1_DB_PORT    = $(VERTICA1_DB_PORT) (ssh: $(VERTICA1_SSH_PORT)))
+	$(info   VERTICA2_DB_PORT    = $(VERTICA2_DB_PORT) (ssh: $(VERTICA2_SSH_PORT)))
+	$(info   VERTICA3_DB_PORT    = $(VERTICA3_DB_PORT) (ssh: $(VERTICA3_SSH_PORT)))
 	@:
 
 # ---- image build ------------------------------------------------------------

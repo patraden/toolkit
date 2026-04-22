@@ -1,34 +1,15 @@
 -- Copyright 2026 Denis Patrakhin
 -- SPDX-License-Identifier: Apache-2.0
 --
--- 05_vmart_loaded.sql
---
 -- Verify the VMart sample schema is fully loaded. Looks at three canonical
 -- fact tables (store_sales_fact, online_sales_fact, inventory_fact) and
 -- checks their *live* row counts against the `vmart_gen` defaults. Skips
 -- cleanly if VMart was never loaded.
 --
--- Implementation notes:
---   * We never reference the VMart tables directly — only v_monitor +
---     v_catalog system tables — so this SQL parses even if VMart was
---     never loaded (the tables / schemas may not exist).
---   * v_monitor.projection_storage.row_count INCLUDES tombstones. VMart's
---     `02_vmart_etl.sql` runs a full-table UPDATE on store_sales_fact which
---     leaves 5M deleted rows alongside the 5M live ones. Use
---     v_monitor.storage_containers.(total_row_count - deleted_row_count)
---     instead for accurate live-row counts.
---   * Storage counts are per buddy projection; divide by (K+1) to get the
---     underlying table rowcount.
---
 -- VMart defaults (from vmart_gen):
 --   store.store_sales_fact         = 5,000,000 rows
 --   online_sales.online_sales_fact = 5,000,000 rows
 --   public.inventory_fact          =   300,000 rows
---
--- Emits:
---   PASS                                              — all three counts match
---   SKIP:vmart_not_loaded                             — sentinel table missing
---   FAIL:store=<N>_online=<N>_inv=<N>                 — row counts mismatch
 WITH ksafety AS (
     SELECT GREATEST(designed_fault_tolerance, 0) + 1 AS replicas
     FROM v_monitor.system

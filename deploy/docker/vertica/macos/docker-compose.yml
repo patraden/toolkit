@@ -2,18 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Three-node Vertica cluster (same image).
-#
-# This file is driven entirely by the Makefile:
-#   make docker-build-node   # build vertica-ce-node:<TAG>
-#   make compose-up          # docker compose --env-file /dev/null up -d
-#
-# The Makefile invokes `docker compose` with `--env-file /dev/null` so this
-# compose file does NOT auto-load any `.env`. Every ${VAR} substitution below
-# is either satisfied by Makefile-exported variables or by the `${VAR:-default}`
-# fallbacks shown here. If you want to invoke `docker compose` directly, source
-# `.env.example` first (`source ./.env.example && docker compose up -d`).
-#
-# Cluster formation is manual; see README.md (SSH, install_vertica, create_db).
 
 services:
   vertica1:

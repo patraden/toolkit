@@ -1,16 +1,9 @@
 -- Copyright 2026 Denis Patrakhin
 -- SPDX-License-Identifier: Apache-2.0
 --
--- 06_data_distribution.sql
---
 -- Verify data for a segmented fact table actually lands on every node in the
 -- cluster (i.e. segmentation + rebalancing work on 3 nodes, not just 1).
 -- Uses store.store_sales_fact (5M rows) as the witness table.
---
--- Emits:
---   PASS                                   — all 3 nodes have row_count > 0
---   SKIP:vmart_not_loaded                  — store.store_sales_fact absent
---   FAIL:distinct_nodes_with_rows=<N>      — < 3 nodes hold any rows
 WITH sentinel AS (
     SELECT CASE WHEN COUNT(*) > 0 THEN TRUE ELSE FALSE END AS loaded
     FROM v_catalog.tables

@@ -137,9 +137,14 @@ COMPOSE ?= docker compose --env-file /dev/null
 compose-up:
 	$(COMPOSE) up -d
 
+# Safe to run: admintools config and dbadmin's ~/.ssh are redirected onto the
+# /data named volume by the entrypoint, so a compose-down + compose-up cycle
+# preserves the cluster. Use `make clean` below for a full reset.
 compose-down:
 	$(COMPOSE) down
 
+# Full reset: stop + remove containers AND the /data volumes. You'll need to
+# re-run install-vertica / create-db / load-vmart after this.
 clean:
 	$(COMPOSE) down -v
 

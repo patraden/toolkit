@@ -1,5 +1,7 @@
 # Vertica 3-node cluster on macOS
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](../../../../LICENSE)
+
 A self-contained three-node Vertica Community Edition (CE) cluster that runs
 under Colima + Docker on Apple Silicon. Based on
 [vertica/vertica-containers/one-node-ce](https://github.com/vertica/vertica-containers/tree/main/one-node-ce),
@@ -34,25 +36,82 @@ Key differences from the upstream one-node example:
    longer publishes Vertica CE on Docker Hub; download the RPM via a trial
    request or from an internal mirror.
 
-3. A root SSH keypair placed at `.ssh/id_rsa` and `.ssh/id_rsa.pub`. Both are
-   gitignored. The build copies them into `/root/.ssh/` inside the image
-   (mode `0600` / `0644`) and seeds `/root/.ssh/authorized_keys`. `dbadmin`
-   gets an empty `~/.ssh/` only; `install_vertica` populates it.
+3. An SSH keypair at `.ssh/id_rsa` and `.ssh/id_rsa.pub`.
+   The build copies them into `/root/.ssh/` inside the image and seeds
+   `/root/.ssh/authorized_keys` for passwordless root SSH between nodes.
 
-4. (Optional) Environment overrides. The Makefile is the single source of
-   truth for configuration and passes every value explicitly to
-   `docker compose`, which is invoked with `--env-file /dev/null` so it does
-   NOT auto-load any `.env` file. The built-in defaults cover the happy path;
-   to customize, either pass variables on the command line
-   (`make TAG=11.0.0-3 VERTICA_DB_NAME=mydb docker-build-node`) or source
-   `.env.example` (or a copy of it) into your shell before running make:
+   Either reuse your personal keypair from `~/.ssh`:
+   ```shell
+   mkdir -p .ssh
+   cp ~/.ssh/id_rsa     .ssh/id_rsa
+   cp ~/.ssh/id_rsa.pub .ssh/id_rsa.pub
+   chmod 0600 .ssh/id_rsa
+   chmod 0644 .ssh/id_rsa.pub
+   ```
+
+   Or generate a dedicated one for this cluster (recommended if your personal
+   key is passphrase-protected — `install_vertica` needs a key without a
+   passphrase):
 
    ```shell
-   source ./.env.example            # every line uses `export`, so plain source works
-   # or, for local edits without polluting git:
-   cp .env.example .env && source ./.env   # .env is gitignored
-   make compose-up
+   mkdir -p .ssh
+   ssh-keygen -t rsa -b 4096 -N '' -C "vertica-macos-cluster" -f .ssh/id_rsa
    ```
+
+## Customization
+
+The Makefile is the single source of truth for every variable and passes
+them explicitly to `docker compose`, which is invoked with
+`--env-file /dev/null` so it does NOT auto-load any `.env` file. Override a
+default in one of two ways:
+
+- pass it on the command line:
+  `make TAG=11.0.0-3 VERTICA_DB_NAME=mydb docker-build-node`, or
+- export it in your shell before running `make`, e.g. by sourcing
+  [`.env.example`](./.env.example) (which ships with `export KEY=value`
+  lines).
+
+Run `make display` to see the effective values.
+
+### Image properties
+
+Build args baked into the image. Changing any of these requires a rebuild
+(`make docker-build-node`).
+
+| Environment Variable | Description | Default Value |
+| :------------------- | :---------- | :------------ |
+| `TAG` | Image tag. Also narrows the `VERTICA_PACKAGE` auto-detect glob when set to a specific version. | `latest` |
+| `IMAGE_NODE_NAME` | Image name; the full reference is `$(IMAGE_NODE_NAME):$(TAG)`. | `vertica-ce-node` |
+| `OS_IMAGE` | Base OS image. | `almalinux` |
+| `OS_VERSION` | Base OS version. | `8.10` |
+| `VERTICA_PACKAGE` | RPM filename under `packages/`. Autodetected from `packages/vertica*.rpm` (or `packages/vertica-$(TAG)*.rpm` when `TAG` is a version). Override to pin a specific RPM when multiple are present. | autodetected |
+
+### Database user and name
+
+Build args that also flow through at runtime to `install-vertica`,
+`create-db`, and `load-vmart`. Changing them requires a rebuild so that the
+pre-created catalog/data dirs (`/data/vertica/${VERTICA_DB_NAME}_{catalog,data}`)
+match what `admintools` expects.
+
+| Environment Variable | Description | Default Value |
+| :------------------- | :---------- | :------------ |
+| `VERTICA_DB_USER` | OS user and implicit database [superuser](https://www.vertica.com/docs/latest/HTML/Content/Authoring/AdministratorsGuide/DBUsersAndPrivileges/Privileges/AboutSuperuserPrivileges.htm). | `dbadmin` |
+| `VERTICA_DB_UID` | UID for `VERTICA_DB_USER`. | `1000` |
+| `VERTICA_DB_GROUP` | Group for database administrator users. | `verticadba` |
+| `VERTICA_DB_GID` | GID for `VERTICA_DB_GROUP`. | `1000` |
+| `VERTICA_DB_NAME` | Vertica database name. | `dockerdb` |
+
+### Runtime only
+
+No rebuild required; override on the Make command line or via the
+environment.
+
+| Environment Variable | Description | Default Value |
+| :------------------- | :---------- | :------------ |
+| `VERTICA_COMPOSE_CONTAINERS` | Service names Compose spins up. | `vertica1 vertica2 vertica3` |
+| `VERTICA_LEADER` | Container that runs `install_vertica`, `create_db`, VMart load, and the leader-only auto-`start_db` on boot. | `vertica1` |
+| `VERTICA_HOSTS` | Comma-separated node IPs passed to `install_vertica -s`. Must match `docker-compose.yml`. | `172.28.0.11,172.28.0.12,172.28.0.13` |
+| `VERTICA_DB_PASSWORD` | Password for `VERTICA_DB_USER`, passed to `create_db`. Empty means no password. | _(empty)_ |
 
 ## Build and run
 
@@ -126,68 +185,42 @@ yet, so `make test` is also useful immediately after `make create-db`.
 - Volumes: `vertica1_data`, `vertica2_data`, `vertica3_data` for `/data` on each
   node.
 
-## Restarting
+## Stop and restart
 
-The entrypoint script auto-starts the database on `vertica1` (the leader) if
-`admintools -t list_db` already reports `$VERTICA_DB_NAME` on this host
-(i.e. `create_db` has run and `admintools.conf` is intact inside the
-container filesystem). Followers wait for the leader. On `docker compose
-stop` / container shutdown the leader gracefully runs `admintools -t stop_db`
-via a `SIGTERM` trap.
+Once the cluster has been created, cycling it is a three-step loop:
 
-**Safe restart commands**: `docker compose restart` and
-`docker compose stop && docker compose start` both preserve the container
-filesystem, so `/opt/vertica/config/admintools.conf` survives and the
-leader's auto `start_db` picks the cluster back up.
+```shell
+make compose-down     # stops + removes containers; /data volumes survive
+make compose-up       # recreates containers from the image
+make test             # optional: confirm the cluster came back up (~30–60 s warm-up)
+```
 
-**Not safe**: `docker compose down` (even without `-v`) removes the
-containers. The next `up` recreates them from the image, so admintools
-forgets about the cluster (its config lives in the image, not on the
-`/data` volume). The DB files under `/data` are still there but become
-orphaned — you need to re-run `make install-vertica` and `make create-db`.
-If you need `compose down` semantics, use `make clean` to wipe `/data`
-volumes too and start fresh.
+The cluster survives this cycle because the entrypoint redirects
+`/opt/vertica/config` and `/home/dbadmin` onto the `/data` named volume on
+first boot (see `preserve_config` / `preserve_dbadmin_home` in
+`docker-entrypoint.sh`). On restart the leader runs
+`admintools -t list_db -d $VERTICA_DB_NAME`, sees that the DB is known,
+and auto-starts it with `admintools -t start_db`. Followers wait for the
+leader. On shutdown the leader traps `SIGTERM` and runs `stop_db`.
+
+Use `make logs` to tail the leader and watch for
+`Database ${VERTICA_DB_NAME}: Startup Succeeded. All Nodes are UP`.
 
 ## Reset
 
 ```shell
-make clean    # docker compose down -v — removes all three volumes
+make clean    # docker compose down -v — also removes the /data volumes
 ```
 
-## Customization
+Unlike `compose-down`, this wipes `admintools.conf`, the DB files, and
+`dbadmin`'s SSH keys, so you need the full happy path
+(`install-vertica` → `create-db` → `load-vmart`) again.
 
-`Makefile` accepts the following overrides:
+---
 
-- `TAG` (default `latest`) — image tag.
-- `IMAGE_NODE_NAME` (default `vertica-ce-node`).
-- `VERTICA_PACKAGE` — autodetected from `packages/vertica*.rpm`; override to
-  pin a specific RPM when multiple are present.
-- `VERTICA_DB_UID` (default `1000`), `VERTICA_DB_GID` (default `1000`),
-  `VERTICA_DB_USER` (default `dbadmin`), `VERTICA_DB_GROUP` (default
-  `verticadba`), `VERTICA_DB_NAME` (default `dockerdb`) — always passed as
-  `--build-arg` so the image pre-creates
-  `/data/vertica/${VERTICA_DB_NAME}_catalog` and `_data` with the right
-  owner. Changing any of these requires a rebuild.
-- Runtime only: `VERTICA_HOSTS`, `VERTICA_LEADER`, `VERTICA_COMPOSE_CONTAINERS`,
-  `VERTICA_DB_PASSWORD`.
-
-Run `make display` to see the effective values.
-
-## Troubleshooting
-
-- `install_vertica` fails with "Failed to create or export SSH key on
-  localhost" or similar PAM / session / TTY errors under `su - dbadmin`:
-  usually a stale `~dbadmin/.ssh` from a previous half-run. `make clean`
-  (wipes volumes) then re-run the happy path.
-- `make compose-up` fails with "Pool overlaps with other one on this address
-  space": another Docker network is already bound to `172.28.0.0/24`. Inspect
-  with `docker network ls` and either remove the conflicting network or
-  change the subnet in `docker-compose.yml`.
-- Container is up but `make vsql` hangs: the leader's auto-`start_db` (from
-  `docker-entrypoint.sh`) can take ~30–60 s after `compose-up` on cold boot.
-  Tail `docker logs vertica1` for `Database dockerdb started successfully`.
+## Credits
 
 This setup is a fork of
-[vertica/vertica-containers/one-node-ce](https://github.com/vertica/vertica-containers/tree/main/one-node-ce);
+[**vertica/vertica-containers/one-node-ce**](https://github.com/vertica/vertica-containers/tree/main/one-node-ce) —
 refer to that repo for the single-node reference Dockerfile and entrypoint
 behaviour we diverged from.

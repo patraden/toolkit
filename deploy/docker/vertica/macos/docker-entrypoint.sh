@@ -25,24 +25,22 @@
 # Node entrypoint for the three-node Vertica cluster on macOS.
 #
 # Runs as PID 1 as root. Responsibilities:
-#   1. Start sshd (install_vertica needs passwordless root SSH between nodes).
-#   2. On the cluster leader (VERTICA_CLUSTER_ROLE=leader), if the database has
-#      already been created (admintools -t list_db knows VERTICA_DB_NAME), bring
-#      the DB back up with `admintools -t start_db`. Followers stay idle.
-#   3. On SIGTERM/SIGINT/SIGHUP, the leader gracefully stops the DB with
+#   1. Persist admintools state and dbadmin's home dir onto the /data volume
+#      via symlinks (see preserve_config + preserve_dbadmin_home below), so
+#      that `docker compose down` + `up` does not erase the cluster's
+#      topology / ssh keys.
+#   2. Start sshd (install_vertica needs passwordless root SSH between nodes).
+#   3. On the cluster leader (VERTICA_CLUSTER_ROLE=leader), if the database
+#      has already been created (`admintools -t list_db -d $VERTICA_DB_NAME`
+#      returns zero), bring the DB back up with `admintools -t start_db`.
+#      Followers stay idle.
+#   4. On SIGTERM/SIGINT/SIGHUP, the leader gracefully stops the DB with
 #      `admintools -t stop_db` before the container exits. Followers just exit.
 #
-# Cluster formation (install_vertica + create_db) is manual — see README.md.
-#
-# Known limitation (vs. the upstream one-node-ce entrypoint):
-#   admintools state lives inside the image under /opt/vertica/config/, not on
-#   the /data volume. `docker compose restart` and `stop/start` preserve it
-#   (container filesystem is intact), but `docker compose down` removes
-#   containers, so the next `up` recreates them from the image and admintools
-#   forgets the cluster. The DB files on /data then become orphaned and you
-#   must re-run `make install-vertica` + `make create-db`. To survive
-#   `compose down`, port the upstream preserve_config() pattern (symlink
-#   /opt/vertica/config -> /data/config on first boot).
+# Cluster formation (install_vertica + create_db) is still manual the first
+# time a /data volume is created — see README.md. After that, the cluster
+# survives both `compose stop/start` and `compose down/up`; only `make clean`
+# (which removes the /data volumes too) forces a re-install.
 
 set -uo pipefail
 
@@ -55,13 +53,54 @@ ADMINTOOLS="${VERTICA_OPT_DIR}/bin/admintools"
 
 log() { echo "[entrypoint] $*"; }
 
-# Ask admintools directly whether the DB is registered on this host. This is
-# robust across Vertica versions (the layout of admintools.conf has changed
-# between releases, so grepping it is fragile).
+# Redirect admintools state onto the /data volume so it survives
+# `docker compose down`. First boot: seed /data/config from the pristine
+# /opt/vertica/config that shipped with the image. Every subsequent boot:
+# just (re)create the symlink — the fresh container has a new plain
+# /opt/vertica/config from the image that we need to replace. Idempotent.
+#
+# Adapted from upstream vertica/vertica-containers one-node-ce preserve_config()
+# (https://github.com/vertica/vertica-containers/blob/main/one-node-ce/docker-entrypoint.sh).
+preserve_config() {
+    if [[ ! -d /data/config ]]; then
+        log "First boot: seeding /data/config from /opt/vertica/config"
+        cp -a /opt/vertica/config /data/config
+    fi
+    if [[ ! -L /opt/vertica/config ]]; then
+        log "Redirecting /opt/vertica/config -> /data/config"
+        rm -rf /opt/vertica/config
+        ln -s /data/config /opt/vertica/config
+    fi
+}
+
+# Same trick for dbadmin's home directory. install_vertica puts dbadmin's
+# inter-node SSH keys in ~dbadmin/.ssh/; `admintools -t start_db/stop_db`
+# rides on those keys to coordinate the cluster. If /home/dbadmin is just a
+# normal dir inside the container filesystem, it vanishes on `compose down`
+# and the next `start_db` fails with "Permission denied (publickey)" even
+# though /data/config is intact. Upstream doesn't need this (single-node),
+# so it's our extension.
+preserve_dbadmin_home() {
+    if [[ ! -d /data/dbadmin_home ]]; then
+        log "First boot: seeding /data/dbadmin_home from /home/${VERTICA_DB_USER}"
+        cp -a "/home/${VERTICA_DB_USER}" /data/dbadmin_home
+    fi
+    if [[ ! -L "/home/${VERTICA_DB_USER}" ]]; then
+        log "Redirecting /home/${VERTICA_DB_USER} -> /data/dbadmin_home"
+        rm -rf "/home/${VERTICA_DB_USER}"
+        ln -s /data/dbadmin_home "/home/${VERTICA_DB_USER}"
+    fi
+}
+
+# Ask admintools directly whether the DB is registered on this host. In
+# Vertica 11 `admintools -t list_db -d <name>` returns zero iff the DB is
+# known to admintools.conf; the bare `list_db` (no -d) fails with an error
+# so we can't use it as a "list all" probe.
 db_is_configured() {
     [[ -x "${ADMINTOOLS}" ]] || return 1
-    su - "${VERTICA_DB_USER}" -c "${ADMINTOOLS} -t list_db 2>/dev/null" \
-        | grep -qw "${VERTICA_DB_NAME}"
+    su - "${VERTICA_DB_USER}" -c \
+        "${ADMINTOOLS} -t list_db -d ${VERTICA_DB_NAME}" \
+        >/dev/null 2>&1
 }
 
 db_is_active() {
@@ -104,6 +143,9 @@ shutdown() {
 }
 
 trap shutdown SIGTERM SIGINT SIGHUP
+
+preserve_config
+preserve_dbadmin_home
 
 mkdir -p /var/run/sshd
 /usr/sbin/sshd

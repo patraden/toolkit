@@ -1,8 +1,6 @@
 -- Copyright 2026 Denis Patrakhin
 -- SPDX-License-Identifier: Apache-2.0
 --
--- 07_segmentation_balance.sql
---
 -- Verify Vertica's hash-segmented projections actually balance rows evenly
 -- across nodes — i.e. the cluster is not just "3 nodes up" but also
 -- parallel-capable (queries will touch all 3 nodes with roughly equal work).
@@ -13,23 +11,12 @@
 -- variation (stddev / mean) across the 3 nodes. For a correctly hash-
 -- segmented large fact table this should be effectively 0 (<0.01); we allow
 -- up to 0.20 (20 %) to avoid flakiness on small machines.
---
--- Emits:
---   PASS                          — CV < 0.20 across 3 nodes
---   SKIP:vmart_not_loaded         — store.store_sales_fact absent
---   FAIL:only_<N>_nodes_have_rows — projection didn't reach all 3 nodes
---   FAIL:cv=<value>               — uneven distribution beyond threshold
 WITH sentinel AS (
     SELECT CASE WHEN COUNT(*) > 0 THEN TRUE ELSE FALSE END AS loaded
     FROM v_catalog.tables
     WHERE table_schema = 'store'
       AND table_name   = 'store_sales_fact'
 ),
--- v_catalog.projections has projection_schema + anchor_table_name (no
--- anchor_table_schema column). For VMart, store.store_sales_fact's super
--- projections live in the 'store' schema, so projection_schema='store' is
--- the correct filter. Pick the lexicographically first super projection so
--- buddy duplication doesn't inflate our per-node sums.
 base_projection AS (
     SELECT MIN(projection_name) AS pname
     FROM v_catalog.projections

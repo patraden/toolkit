@@ -223,6 +223,11 @@ RUN set -x \
 
 ADD ./env_setup/vertica_env.sh /etc/profile.d/
 ADD ./vmart/${VMART_ETL_SQL} ./vmart/${VMART_ETL_SCRIPT} ${VMART_DIR}/
+RUN chmod 0755 ${VMART_DIR}/${VMART_ETL_SCRIPT} \
+ && chown ${vertica_db_user}:${vertica_db_group} \
+          ${VMART_DIR}/${VMART_ETL_SQL} \
+          ${VMART_DIR}/${VMART_ETL_SCRIPT}
+
 ADD ./${ENTRYPOINT_SCRIPT} ${ENTRYPOINT_SCRIPT_PATH}
 RUN chmod +x ${ENTRYPOINT_SCRIPT_PATH}
 

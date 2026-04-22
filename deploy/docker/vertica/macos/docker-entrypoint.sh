@@ -59,8 +59,8 @@ log() { echo "[entrypoint] $*"; }
 # just (re)create the symlink — the fresh container has a new plain
 # /opt/vertica/config from the image that we need to replace. Idempotent.
 #
-# Adapted from upstream vertica/vertica-containers one-node-ce preserve_config()
-# (https://github.com/vertica/vertica-containers/blob/main/one-node-ce/docker-entrypoint.sh).
+# This redirect-to-/data pattern is our extension and is not taken from the
+# upstream one-node-ce entrypoint (which is single-node and doesn't need it).
 preserve_config() {
     if [[ ! -d /data/config ]]; then
         log "First boot: seeding /data/config from /opt/vertica/config"

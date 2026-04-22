@@ -133,9 +133,12 @@ display:
 	$(info   RPM IN CONTAINER    = $(VERTICA_INSTALL_RPM_PATH))
 	$(info ===> Runtime (overridable))
 	$(info   VERTICA_DB_PASSWORD = $(if $(VERTICA_DB_PASSWORD),<set>,<empty>))
-	$(info   VERTICA1_DB_PORT    = $(VERTICA1_DB_PORT) (ssh: $(VERTICA1_SSH_PORT)))
-	$(info   VERTICA2_DB_PORT    = $(VERTICA2_DB_PORT) (ssh: $(VERTICA2_SSH_PORT)))
-	$(info   VERTICA3_DB_PORT    = $(VERTICA3_DB_PORT) (ssh: $(VERTICA3_SSH_PORT)))
+	$(info   VERTICA1_DB_PORT    = $(VERTICA1_DB_PORT))
+	$(info   VERTICA1_SSH_PORT   = $(VERTICA1_SSH_PORT))
+	$(info   VERTICA2_DB_PORT    = $(VERTICA2_DB_PORT))
+	$(info   VERTICA2_SSH_PORT   = $(VERTICA2_SSH_PORT))
+	$(info   VERTICA3_DB_PORT    = $(VERTICA3_DB_PORT))
+	$(info   VERTICA3_SSH_PORT   = $(VERTICA3_SSH_PORT))
 	@:
 
 # ---- image build ------------------------------------------------------------
@@ -248,10 +251,10 @@ test:
 	for f in $(TEST_FILES); do \
 	    name=$$(basename $$f .sql); \
 	    total=$$((total+1)); \
-	    out=$$(docker exec -u $(VERTICA_DB_USER) -i $(VERTICA_LEADER) \
+	    raw=$$(docker exec -u $(VERTICA_DB_USER) -i $(VERTICA_LEADER) \
 	        /opt/vertica/bin/vsql -U $(VERTICA_DB_USER) -d $(VERTICA_DB_NAME) \
-	        -Atq 2>&1 < "$$f" \
-	        | grep -E '^(PASS|FAIL|SKIP)' | head -n 1); \
+	        -Atq 2>&1 < "$$f"); \
+	    out=$$(printf '%s\n' "$$raw" | grep -E '^(PASS|FAIL|SKIP)' | head -n 1); \
 	    case "$$out" in \
 	        PASS) \
 	            printf "  PASS  %s\n" "$$name" ;; \
@@ -262,7 +265,12 @@ test:
 	            printf "  FAIL  %s (%s)\n" "$$name" "$$out"; \
 	            failed=$$((failed+1)) ;; \
 	        *) \
-	            printf "  FAIL  %s (no PASS/FAIL/SKIP emitted — check vsql output)\n" "$$name"; \
+	            err=$$(printf '%s\n' "$$raw" | grep -iE '^(ERROR|ROLLBACK)' | head -n 1); \
+	            if [ -n "$$err" ]; then \
+	                printf "  FAIL  %s (%s)\n" "$$name" "$$err"; \
+	            else \
+	                printf "  FAIL  %s (no PASS/FAIL/SKIP emitted — check vsql output)\n" "$$name"; \
+	            fi; \
 	            failed=$$((failed+1)) ;; \
 	    esac; \
 	done; \

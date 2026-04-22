@@ -61,7 +61,10 @@ services:
     cap_add:
       - AUDIT_WRITE
       - SYS_NICE
-    stop_grace_period: 60s
+    # Followers only exit on shutdown (no stop_db), so the default 10s would
+    # work — 15s keeps some headroom for slow Colima SIGTERM delivery without
+    # matching the leader's 60s.
+    stop_grace_period: 15s
 
   vertica3:
     image: ${VERTICA_NODE_IMAGE:-vertica-ce-node:latest}
@@ -82,7 +85,7 @@ services:
     cap_add:
       - AUDIT_WRITE
       - SYS_NICE
-    stop_grace_period: 60s
+    stop_grace_period: 15s
 
 networks:
   vertica_cluster:

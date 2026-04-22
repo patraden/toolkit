@@ -196,8 +196,8 @@ yet, so `make test` is also useful immediately after `make create-db`.
 - Containers: `vertica1`, `vertica2`, `vertica3`
 - IPs (internal): `172.28.0.11`, `172.28.0.12`, `172.28.0.13`
 - Host port mappings (defaults shown). Override either inline
-  (`make VERTICA1_DB_PORT=... compose-up`) or by uncommenting the matching
-  `export VERTICA*_{DB,SSH}_PORT=...` line in [`.env.example`](./.env.example)
+  (`make VERTICA1_DB_PORT=55001 compose-up`) or by uncommenting the relevant
+  line(s) in [`.env.example`](./.env.example) (e.g. `export VERTICA1_DB_PORT=55001`)
   and `source`-ing it before `make compose-up`. Run `make display` to confirm
   the effective values:
 
@@ -240,6 +240,13 @@ make clean    # docker compose down -v — also removes the /data volumes
 Unlike `compose-down`, this wipes `admintools.conf`, the DB files, and
 `dbadmin`'s SSH keys, so you need the full happy path
 (`install-vertica` → `create-db` → `load-vmart`) again.
+
+> **Note**: `preserve_config` symlinks `/opt/vertica/config` onto the `/data`
+> volume on first boot, so any config changes shipped with a newer Vertica RPM
+> in a rebuilt image will be shadowed by the previously persisted copy. After
+> bumping the RPM under `packages/` and rebuilding (`make docker-build-node`),
+> run `make clean` before the next `make compose-up` to let the new image's
+> `/opt/vertica/config` re-seed the volume.
 
 ---
 

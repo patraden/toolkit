@@ -35,9 +35,42 @@ packages/*
 !packages/.gitkeep
 !packages/README.md
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.pytype/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.ipynb_checkpoints/
+
 # Environment files: the .env.example template is source-controlled; actual
 # sourced .env variants (local secrets, per-host overrides) are not.
 .env
 .env.local
 .env.*.local
 !.env.example
+
+# Editors / IDE — machine-local or noisy; workspace `.vscode/settings.json` stays tracked.
+.idea/
+*.swp
+*.swo
+*~
+.vscode/*.local.json

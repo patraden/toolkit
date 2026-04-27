@@ -1,0 +1,25 @@
+{
+  "makefile.configureOnOpen": false,
+  "terminal.integrated.env.osx": {
+    "PYTHONPATH": "${workspaceFolder}/examples/scripts"
+  },
+  "terminal.integrated.env.linux": {
+    "PYTHONPATH": "${workspaceFolder}/examples/scripts"
+  },
+  "terminal.integrated.env.windows": {
+    "PYTHONPATH": "${workspaceFolder}/examples/scripts"
+  },
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
+  "python.terminal.activateEnvironment": true,
+  "python.envFile": "${workspaceFolder}/.env",
+  "python.languageServer": "None",
+  "python.analysis.extraPaths": ["${workspaceFolder}/examples/scripts"],
+  "cursorpyright.analysis.extraPaths": ["${workspaceFolder}/examples/scripts"],
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": [],
+  "python.testing.autoTestDiscoverOnSaveEnabled": true,
+  "python.testing.env": {
+    "PYTHONPATH": "${workspaceFolder}/examples/scripts"
+  }
+}

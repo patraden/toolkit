@@ -85,6 +85,7 @@ func WithDeleteInterval(cleanupInterval time.Duration, log zerolog.Logger) *MemC
 	}
 
 	cache.cleanerWG.Add(1)
+
 	go cache.cleaner(cleanupInterval)
 
 	return cache
@@ -187,6 +188,7 @@ func (mc *MemCache) Delete(ctx context.Context, keys ...string) error {
 	defer mc.mx.Unlock()
 
 	deleted := uint32(0)
+
 	defer func() { mc.metrics.AddDelete(deleted) }()
 
 	for _, key := range keys {

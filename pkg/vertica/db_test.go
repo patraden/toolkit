@@ -102,6 +102,7 @@ func TestDBQueryRow(t *testing.T) {
 	var gotID int
 
 	var name string
+
 	err := db.QueryRowContext(
 		context.Background(),
 		"SELECT id, name FROM foo WHERE id = ?",
@@ -157,10 +158,11 @@ func TestDBTxCommit(t *testing.T) {
 	mock.ExpectCommit()
 
 	err := db.WithTxOps(
-		context.Background(),
+		t.Context(),
 		&sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: false},
 		func(tx *sql.Tx) error {
-			_, err := tx.Exec(
+			_, err := tx.ExecContext(
+				t.Context(),
 				"UPDATE accounts SET balance = balance - ? WHERE id = ?",
 				100,
 				1,

@@ -130,6 +130,7 @@ func TestMemCacheStress(t *testing.T) {
 		for key := range keys {
 			go func(k int) {
 				defer wg.Done()
+
 				require.NoError(t, mcache.Set(t.Context(), fmt.Sprintf("e-%d", k), k, 10*time.Millisecond))
 			}(key)
 		}

@@ -38,6 +38,7 @@ func TestQAVerticaDBPing(t *testing.T) {
 
 	db, err := vertica.NewDB(connStr)
 	require.NoError(t, err)
+
 	defer db.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
